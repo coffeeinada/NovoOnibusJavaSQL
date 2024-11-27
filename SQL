@@ -1,0 +1,95 @@
+CREATE DATABASE IF NOT EXISTS VendasPassagens;
+USE VendasPassagens;
+
+-- Certifique-se de que o usuário tem permissões adequadas
+GRANT ALL PRIVILEGES ON VendasPassagens.* TO 'user_42yv274qs_42yw7jns7'@'%' IDENTIFIED BY 'senha_do_banco';
+
+-- Recarregar as permissões para garantir que as mudanças entrem em vigor
+FLUSH PRIVILEGES;
+
+CREATE TABLE IF NOT EXISTS Onibus (
+  id_onibus INT PRIMARY KEY AUTO_INCREMENT,
+  modelo VARCHAR(100),
+  capacidade INT
+);
+
+CREATE TABLE IF NOT EXISTS Viagem (
+  id_viagem INT PRIMARY KEY AUTO_INCREMENT,
+  origem VARCHAR(100),
+  destino VARCHAR(100),
+  data_partida DATETIME,
+  id_onibus INT,
+  FOREIGN KEY (id_onibus) REFERENCES Onibus(id_onibus)
+);
+
+CREATE TABLE IF NOT EXISTS Passageiro (
+  id_passageiro INT PRIMARY KEY AUTO_INCREMENT,
+  nome VARCHAR(100),
+  documento VARCHAR(20) UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS Venda (
+  id_venda INT PRIMARY KEY AUTO_INCREMENT,
+  id_passageiro INT,
+  id_viagem INT,
+  data_venda DATETIME,
+  FOREIGN KEY (id_passageiro) REFERENCES Passageiro(id_passageiro),
+  FOREIGN KEY (id_viagem) REFERENCES Viagem(id_viagem)
+);
+
+INSERT INTO Onibus (modelo, capacidade) VALUES ('Mercedes-Benz', 40);
+INSERT INTO Onibus (modelo, capacidade) VALUES ('Volvo', 45);
+INSERT INTO Viagem (origem, destino, data_partida, id_onibus) VALUES ('São Paulo', 'Rio de Janeiro', '2024-11-23 10:00:00', 1);
+INSERT INTO Passageiro (nome, documento) VALUES ('João Silva', '12345678900');
+INSERT INTO Venda (id_passageiro, id_viagem, data_venda) VALUES (1, 1, NOW());
+
+CREATE VIEW PassengersView AS
+SELECT p.nome, v.data_venda, vi.origem, vi.destino
+FROM Passageiro p
+JOIN Venda v ON p.id_passageiro = v.id_passageiro
+JOIN Viagem vi ON v.id_viagem = vi.id_viagem;
+
+SELECT * FROM PassengersView;
+
+DELIMITER $$
+CREATE PROCEDURE RegistrarVenda(
+  IN p_id_passageiro INT,
+  IN p_id_viagem INT
+)
+BEGIN
+  DECLARE v_data_venda DATETIME;
+  DECLARE v_passageiro_existe INT;
+  DECLARE v_viagem_existe INT;
+
+  SELECT COUNT(*) INTO v_passageiro_existe FROM Passageiro WHERE id_passageiro = p_id_passageiro;
+  SELECT COUNT(*) INTO v_viagem_existe FROM Viagem WHERE id_viagem = p_id_viagem;
+
+  IF v_passageiro_existe > 0 AND v_viagem_existe > 0 THEN
+    SET v_data_venda = NOW();
+    INSERT INTO Venda (id_passageiro, id_viagem, data_venda) VALUES (p_id_passageiro, p_id_viagem, v_data_venda);
+  ELSE
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Passageiro ou viagem não encontrado';
+  END IF;
+END$$
+DELIMITER ;
+
+CALL RegistrarVenda(1, 1);
+
+DELIMITER $$
+CREATE FUNCTION NumeroDePassageiros(p_id_viagem INT) RETURNS INT DETERMINISTIC
+BEGIN
+  DECLARE v_passageiros INT;
+  DECLARE v_viagem_existe INT;
+
+  SELECT COUNT(*) INTO v_viagem_existe FROM Viagem WHERE id_viagem = p_id_viagem;
+
+  IF v_viagem_existe > 0 THEN
+    SELECT COUNT(*) INTO v_passageiros FROM Venda v WHERE v.id_viagem = p_id_viagem;
+    RETURN v_passageiros;
+  ELSE
+    RETURN NULL;
+  END IF;
+END$$
+DELIMITER ;
+
+SELECT NumeroDePassageiros(1);
